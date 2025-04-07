@@ -1,5 +1,8 @@
 name: 'Install ARM GCC'
 description: 'Install and cache ARM GCC cross-compiler toolchain'
+branding:
+  icon: 'cpu'
+  color: 'blue'
 
 inputs:
   version:
@@ -20,7 +23,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Set GCC_URL 
+    - name: Configure ARM GCC Download URL
       shell: bash
       run: |
         if [ "${{ runner.os }}" == "Windows" ] && [ "${{ runner.arch }}" == "X86" ]; then
@@ -49,14 +52,14 @@ runs:
         echo "GCC_PATH=${gcc_path}" >> $GITHUB_ENV
         echo "${gcc_path}" >> $GITHUB_PATH
 
-    - name: Cache ARM GCC
+    - name: Cache ARM GCC Toolchain
       id: cache-arm-toolchain
       uses: actions/cache@v4
       with:
         path: ${{ env.GCC_HOME }}
         key: ${{ env.GCC_URL }}
       
-    - name: Download ARM GCC
+    - name: Download and Extract ARM GCC Toolchain
       if: steps.cache-arm-toolchain.outputs.cache-hit != 'true'
       shell: bash
       run: |
