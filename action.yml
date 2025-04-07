@@ -1,0 +1,70 @@
+name: 'Install ARM GCC'
+description: 'Install and cache ARM GCC cross-compiler toolchain'
+
+inputs:
+  version:
+    description: 'ARM GCC Version'
+    required: false
+    default: '14.2.rel1'
+  target:
+    description: 'ARM GCC Target'
+    required: false
+    default: 'arm-none-eabi'
+
+# target:
+#   arm-none-eabi            
+#   arm-none-linux-gnueabihf 
+#   aarch64-none-elf         
+#   aarch64-none-linux-gnu   
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set GCC_URL 
+      shell: bash
+      run: |
+        if [ "${{ runner.os }}" == "Windows" ] && [ "${{ runner.arch }}" == "X86" ]; then
+          host=mingw-w64-i686; ext=zip
+        elif [ "${{ runner.os }}" == "Windows" ] && [ "${{ runner.arch }}" == "X64" ]; then
+          host=mingw-w64-x86_64; ext=zip
+        elif [ "${{ runner.os }}" == "Linux" ] && [ "${{ runner.arch }}" == "X64" ]; then
+          host=x86_64; ext=tar.xz
+        elif [ "${{ runner.os }}" == "Linux" ] && [ "${{ runner.arch }}" == "ARM64" ]; then
+          host=aarch64; ext=tar.xz
+        elif [ "${{ runner.os }}" == "macOS" ] && [ "${{ runner.arch }}" == "X64" ]; then
+          host=darwin-x86_64; ext=tar.xz
+        elif [ "${{ runner.os }}" == "macOS" ] && [ "${{ runner.arch }}" == "ARM64" ]; then
+          host=darwin-arm64; ext=tar.xz
+        fi
+        url_pre='https://developer.arm.com/-/media/Files/downloads/gnu'
+        echo "GCC_URL=${url_pre}/${{ inputs.version }}/binrel/arm-gnu-toolchain-${{ inputs.version }}-${host}-${{ inputs.target }}.${ext}" >> $GITHUB_ENV
+
+    - name: Set GCC_HOME GCC_PATH PATH
+      shell: bash
+      run: |
+        path_pre=$(echo "${{runner.temp}}" | tr '\\' '/')
+        gcc_home="${path_pre}/gcc-arm-none-eabi"
+        gcc_path="${gcc_home}/bin"
+        echo "GCC_HOME=${gcc_home}" >> $GITHUB_ENV
+        echo "GCC_PATH=${gcc_path}" >> $GITHUB_ENV
+        echo "${gcc_path}" >> $GITHUB_PATH
+
+    - name: Cache ARM GCC
+      id: cache-arm-toolchain
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.GCC_HOME }}
+        key: ${{ env.GCC_URL }}
+      
+    - name: Download ARM GCC
+      if: steps.cache-arm-toolchain.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        mkdir -p ${{ env.GCC_HOME }}
+        curl -L -o gcc_zip ${{ env.GCC_URL }}
+        if [ "${{ runner.os }}" == "Windows" ]; then
+          7z x gcc_zip -o"${{ env.GCC_HOME }}" -y
+        else
+          tar -xf gcc_zip -C "${{ env.GCC_HOME }}" --strip-components=1
+        fi
+        ls -lh ${{ env.GCC_HOME }}
