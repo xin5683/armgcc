@@ -31,7 +31,7 @@ steps:
 
 ### Available Versions
 
-For available versions, please refer to ARM GNU Toolchain Downloads
+For available versions, please refer to [ARM GNU Toolchain Downloads](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
 
 ### Available Targets
 
