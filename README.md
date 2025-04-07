@@ -1,6 +1,6 @@
 # ARM GCC GitHub Action
 
-[中文文档](./README_zh.md)
+[中文文档](./README.zh-CN.md)
 
 A dedicated GitHub Action for installing and caching the ARM GCC cross-compiler toolchain. It helps you quickly and automatically configure ARM development environment in your CI/CD pipeline.
 
