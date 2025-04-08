@@ -1,5 +1,5 @@
 name: 'Install ARM GCC'
-description: 'Install and cache ARM GCC cross-compiler toolchain'
+description: 'Install and cache the ARM GCC toolchain, for example, arm-none-eabi-gcc.'
 branding:
   icon: 'cpu'
   color: 'blue'
