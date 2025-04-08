@@ -17,7 +17,7 @@ jobs:
     steps:
 
       - name: ARM GCC
-        uses: demopath/armgcc@dev
+        uses: demopath/armgcc@main
 
       - name: Print GCC Version
         run: arm-none-eabi-gcc --version
