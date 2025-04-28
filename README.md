@@ -40,6 +40,19 @@ For available versions, please refer to [ARM GNU Toolchain Downloads](https://de
 - aarch64-none-elf - For 64-bit ARM bare-metal development
 - aarch64-none-linux-gnu - For 64-bit ARM Linux development
 
+### Multiple Targets
+
+You can specify multiple targets using comma-separated values:
+
+```yml
+- name: Install ARM GCC with Multiple Targets
+  uses: demopath/armgcc@v1
+  with:
+    target: 'arm-none-eabi,aarch64-none-elf'
+```
+
+> Note: When using multiple targets, all specified toolchains will be installed and added to the PATH.
+
 ### Example Workflow
 
 ```yml

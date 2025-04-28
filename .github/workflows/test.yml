@@ -6,18 +6,50 @@ on:
   pull_request:
     branches: [ "main" , "dev" ]
   workflow_dispatch:
+env:
+  TOOLCHAIN_VER: 12.3.rel1
 
 jobs:
-  test:
+  test-single-target:
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     
     steps:
-
       - name: ARM GCC
-        uses: demopath/armgcc@main
+        uses: xin5683/armgcc@main
 
       - name: Print GCC Version
         run: arm-none-eabi-gcc --version
+
+  test-multiple-targets:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04-arm, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: ARM GCC with Multiple Targets
+        uses: xin5683/armgcc@main
+        with:
+          target: 'arm-none-linux-gnueabihf,aarch64-none-linux-gnu'
+          version: ${{ env.TOOLCHAIN_VER }}
+
+      - name: Print Environment Variables
+        run: |
+          echo "Printing environment variables..."
+          env
+          echo "PATH=$PATH"
+
+      - name: Verify arm-none-linux-gnueabihf GCC
+        run: arm-none-linux-gnueabihf-gcc --version
+
+      - name: Verify aarch64-none-linux-gnu GCC
+        run: aarch64-none-linux-gnu-gcc --version
+
+      - name: Verify aarch64-linux-gnu GCC
+        run: aarch64-linux-gnu-gcc --version
+
+      - name: Verify arm-linux-gnueabihf GCC
+        run: arm-linux-gnueabihf-gcc --version

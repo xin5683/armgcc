@@ -10,7 +10,7 @@ inputs:
     required: false
     default: '14.2.rel1'
   target:
-    description: 'ARM GCC Target'
+    description: 'ARM GCC Target(s), comma-separated for multiple targets'
     required: false
     default: 'arm-none-eabi'
 
@@ -23,7 +23,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Configure ARM GCC Download URL
+    - name: Configure ARM GCC Download URLs
       shell: bash
       run: |
         if [ "${{ runner.os }}" == "Windows" ] && [ "${{ runner.arch }}" == "X86" ]; then
@@ -40,34 +40,195 @@ runs:
           host=darwin-arm64; ext=tar.xz
         fi
         url_pre='https://developer.arm.com/-/media/Files/downloads/gnu'
-        echo "GCC_URL=${url_pre}/${{ inputs.version }}/binrel/arm-gnu-toolchain-${{ inputs.version }}-${host}-${{ inputs.target }}.${ext}" >> $GITHUB_ENV
+        
+        # Process comma-separated targets
+        IFS=',' read -ra TARGETS <<< "${{ inputs.target }}"
+        TARGETS_JSON='['
+        for i in "${!TARGETS[@]}"; do
+          target="${TARGETS[$i]}"
+          target_trimmed="$(echo "$target" | xargs)"
+          url="${url_pre}/${{ inputs.version }}/binrel/arm-gnu-toolchain-${{ inputs.version }}-${host}-${target_trimmed}.${ext}"
+          
+          if [ $i -gt 0 ]; then
+            TARGETS_JSON="${TARGETS_JSON},"
+          fi
+          TARGETS_JSON="${TARGETS_JSON}\"${target_trimmed}\":\"{\\\"url\\\":\\\"${url}\\\"}\""
+          
+          # Set the first target as the default GCC_URL for backward compatibility
+          if [ $i -eq 0 ]; then
+            echo "GCC_URL=${url}" >> $GITHUB_ENV
+            echo "PRIMARY_TARGET=${target_trimmed}" >> $GITHUB_ENV
+          fi
+        done
+        TARGETS_JSON="${TARGETS_JSON}]"
+        echo "TARGETS_JSON=${TARGETS_JSON}" >> $GITHUB_ENV
+        echo "TARGET_COUNT=${#TARGETS[@]}" >> $GITHUB_ENV
 
     - name: Set GCC_HOME GCC_PATH PATH
       shell: bash
       run: |
         path_pre=$(echo "${{runner.temp}}" | tr '\\' '/')
-        gcc_home="${path_pre}/gcc-arm-none-eabi"
-        gcc_path="${gcc_home}/bin"
-        echo "GCC_HOME=${gcc_home}" >> $GITHUB_ENV
-        echo "GCC_PATH=${gcc_path}" >> $GITHUB_ENV
-        echo "${gcc_path}" >> $GITHUB_PATH
+        base_gcc_home="${path_pre}/gcc-arm"
+        echo "BASE_GCC_HOME=${base_gcc_home}" >> $GITHUB_ENV
+        
+        # Set up the primary target's paths for backward compatibility
+        primary_gcc_home="${base_gcc_home}/${{ env.PRIMARY_TARGET }}"
+        primary_gcc_path="${primary_gcc_home}/bin"
+        echo "GCC_HOME=${primary_gcc_home}" >> $GITHUB_ENV
+        echo "GCC_PATH=${primary_gcc_path}" >> $GITHUB_ENV
+        
+        # Process all targets and add their bin directories to PATH
+        IFS=',' read -ra TARGETS <<< "${{ inputs.target }}"
+        for target in "${TARGETS[@]}"; do
+          target_trimmed="$(echo "$target" | xargs)"
+          target_gcc_home="${base_gcc_home}/${target_trimmed}"
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            echo "${target_gcc_home}/bin" | sed 's/\//\\/g' >> $GITHUB_PATH
+          else
+            echo "${target_gcc_home}/bin" >> $GITHUB_PATH
+          fi
+        done
 
-    - name: Cache ARM GCC Toolchain
-      id: cache-arm-toolchain
+    - name: Sanitize target
+      id: sanitize-target
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const inputTarget = '${{ inputs.target }}';
+          const os = '${{ runner.os }}';
+          const arch = '${{ runner.arch }}';
+          let result;
+          if (!inputTarget) {
+            result = 'none';
+          } else if (inputTarget.includes(',')) {
+            result = 'multi-' + inputTarget.split(',').join('_');
+          } else {
+            result = inputTarget;
+          }
+          result = `${result}-${os}-${arch}`;
+          core.setOutput('sanitized', result);
+
+    - name: Cache ARM GCC Toolchains
+      id: cache-arm-toolchains
       uses: actions/cache@v4
       with:
-        path: ${{ env.GCC_HOME }}
-        key: ${{ env.GCC_URL }}
+        path: ${{ env.BASE_GCC_HOME }}
+        key: arm-gcc-${{ inputs.version }}-${{ steps.sanitize-target.outputs.sanitized }}
+
       
-    - name: Download and Extract ARM GCC Toolchain
-      if: steps.cache-arm-toolchain.outputs.cache-hit != 'true'
+    - name: Download and Extract ARM GCC Toolchains
+      if: steps.cache-arm-toolchains.outputs.cache-hit != 'true'
       shell: bash
       run: |
-        mkdir -p ${{ env.GCC_HOME }}
-        curl -L -o gcc_zip ${{ env.GCC_URL }}
-        if [ "${{ runner.os }}" == "Windows" ]; then
-          7z x gcc_zip -o"${{ env.GCC_HOME }}" -y
-        else
-          tar -xf gcc_zip -C "${{ env.GCC_HOME }}" --strip-components=1
-        fi
-        ls -lh ${{ env.GCC_HOME }}
+        mkdir -p ${{ env.BASE_GCC_HOME }}
+        
+        # Process all targets
+        IFS=',' read -ra TARGETS <<< "${{ inputs.target }}"
+        for target in "${TARGETS[@]}"; do
+          target_trimmed="$(echo "$target" | xargs)"
+          target_gcc_home="${{ env.BASE_GCC_HOME }}/${target_trimmed}"
+          mkdir -p "${target_gcc_home}"
+          
+          # Construct URL for this target
+          if [ "${{ runner.os }}" == "Windows" ] && [ "${{ runner.arch }}" == "X86" ]; then
+            host=mingw-w64-i686; ext=zip
+          elif [ "${{ runner.os }}" == "Windows" ] && [ "${{ runner.arch }}" == "X64" ]; then
+            host=mingw-w64-x86_64; ext=zip
+          elif [ "${{ runner.os }}" == "Linux" ] && [ "${{ runner.arch }}" == "X64" ]; then
+            host=x86_64; ext=tar.xz
+          elif [ "${{ runner.os }}" == "Linux" ] && [ "${{ runner.arch }}" == "ARM64" ]; then
+            host=aarch64; ext=tar.xz
+          elif [ "${{ runner.os }}" == "macOS" ] && [ "${{ runner.arch }}" == "X64" ]; then
+            host=darwin-x86_64; ext=tar.xz
+          elif [ "${{ runner.os }}" == "macOS" ] && [ "${{ runner.arch }}" == "ARM64" ]; then
+            host=darwin-arm64; ext=tar.xz
+          fi
+          url_pre='https://developer.arm.com/-/media/Files/downloads/gnu'
+          target_url="${url_pre}/${{ inputs.version }}/binrel/arm-gnu-toolchain-${{ inputs.version }}-${host}-${target_trimmed}.${ext}"
+          
+          echo "Downloading toolchain for ${target_trimmed}..."
+          curl -L -o gcc_zip_${target_trimmed} "${target_url}"
+          
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            7z x gcc_zip_${target_trimmed} -o"${target_gcc_home}" -y
+          else
+            tar -xf gcc_zip_${target_trimmed} -C "${target_gcc_home}" --strip-components=1
+          fi
+          
+          # Create compatibility symlinks for common naming conventions
+          if [[ "$target_trimmed" == "arm-none-linux-gnueabihf" ]]; then
+            echo "Creating compatibility symlinks for ${target_trimmed}..."
+            for tool in "${target_gcc_home}/bin/${target_trimmed}"*; do
+              if [ -f "$tool" ]; then
+                base_name=$(basename "$tool")
+                compat_name="${base_name/arm-none-linux-gnueabihf/arm-linux-gnueabihf}"
+                if [ "$base_name" != "$compat_name" ]; then
+                  if [ "${{ runner.os }}" == "Windows" ]; then
+                    # Windows doesn't support symlinks in all environments, create batch file instead
+                    echo "@echo off" > "${target_gcc_home}/bin/$compat_name.bat"
+                    echo "\"%~dp0$base_name\" %*" >> "${target_gcc_home}/bin/$compat_name.bat"
+                    echo "Created compatibility batch file: $compat_name.bat -> $base_name"
+                  else
+                    # Create symlink on Unix systems
+                    ln -sf "$tool" "${target_gcc_home}/bin/$compat_name"
+                    echo "Created compatibility symlink: $compat_name -> $base_name"
+                  fi
+                fi
+              fi
+            done
+          elif [[ "$target_trimmed" == "aarch64-none-linux-gnu" ]]; then
+            echo "Creating compatibility symlinks for ${target_trimmed}..."
+            for tool in "${target_gcc_home}/bin/${target_trimmed}"*; do
+              if [ -f "$tool" ]; then
+                base_name=$(basename "$tool")
+                compat_name="${base_name/aarch64-none-linux-gnu/aarch64-linux-gnu}"
+                if [ "$base_name" != "$compat_name" ]; then
+                  if [ "${{ runner.os }}" == "Windows" ]; then
+                    # Windows doesn't support symlinks in all environments, create batch file instead
+                    echo "@echo off" > "${target_gcc_home}/bin/$compat_name.bat"
+                    echo "\"%~dp0$base_name\" %*" >> "${target_gcc_home}/bin/$compat_name.bat"
+                    echo "Created compatibility batch file: $compat_name.bat -> $base_name"
+                  else
+                    # Create symlink on Unix systems
+                    ln -sf "$tool" "${target_gcc_home}/bin/$compat_name"
+                    echo "Created compatibility symlink: $compat_name -> $base_name"
+                  fi
+                fi
+              fi
+            done
+          fi
+          
+          echo "Installed toolchain for ${target_trimmed}:"
+          ls -lh "${target_gcc_home}/bin" | grep -E "${target_trimmed}-(gcc|g\+\+)"
+        done
+        
+        echo "All toolchains installed in ${{ env.BASE_GCC_HOME }}:"
+        ls -lh ${{ env.BASE_GCC_HOME }}
+
+    - name: Verify GCC Installation
+      shell: bash
+      run: |
+        echo "Verifying GCC installations..."
+        IFS=',' read -ra TARGETS <<< "${{ inputs.target }}"
+        for target in "${TARGETS[@]}"; do
+          target_trimmed="$(echo "$target" | xargs)"
+          compiler_name="${target_trimmed}-gcc"
+          
+          echo "Testing compiler for target: ${target_trimmed}"
+          if ! command -v "${compiler_name}" &> /dev/null; then
+            echo "::error::Compiler not found in PATH: ${compiler_name}"
+            echo "Current PATH: $PATH"
+            exit 1
+          fi
+          
+          echo "Compiler version information:"
+          "${compiler_name}" --version
+          if [ $? -ne 0 ]; then
+            echo "::error::Failed to execute compiler: ${compiler_name}"
+            exit 1
+          fi
+          
+          echo "----------------------------------------"
+        done
+        
+        echo "All compiler installations verified successfully!"

@@ -29,11 +29,25 @@ steps:
 ### version 参数可选值
 可用版本请参考 [ARM GNU 工具链下载页面](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
 
-### target 参数可选值
-- arm-none-eabi - 用于裸机 ARM 开发
-- arm-none-linux-gnueabihf - 用于 ARM Linux 开发（硬浮点）
-- aarch64-none-elf - 用于 64 位 ARM 裸机开发
-- aarch64-none-linux-gnu - 用于 64 位 ARM Linux 开发
+### 可用目标
+
+- arm-none-eabi - 用于裸机ARM开发
+- arm-none-linux-gnueabihf - 用于ARM Linux开发（硬浮点）
+- aarch64-none-elf - 用于64位ARM裸机开发
+- aarch64-none-linux-gnu - 用于64位ARM Linux开发
+
+### 多目标支持
+
+您可以使用逗号分隔的值指定多个目标：
+
+```yml
+- name: 安装多目标ARM GCC
+  uses: demopath/armgcc@v1
+  with:
+    target: 'arm-none-eabi,aarch64-none-elf'
+```
+
+> 注意：使用多个目标时，所有指定的工具链都将被安装并添加到PATH中。
 
 ### 示例工作流程
 ```yml
